@@ -160,21 +160,28 @@ function renderRow(r, isVariant, lastInGroup) {
   const srcBadge = r.source_type
     ? `<span class="badge ${escapeHtml(r.source_type)}">${escapeHtml(r.source_type)}</span>`
     : '';
-  const initial = (r.title || '·').trim().charAt(0).toUpperCase();
-  const thumb = r.has_photo
-    ? `<img class="thumb" src="${photoUrlForRecipe(r)}" alt="">`
-    : `<div class="thumb-placeholder">${escapeHtml(initial)}</div>`;
   const classes = [
     state.selectedId === r.id ? 'selected' : '',
     isVariant ? 'variant-row' : '',
     lastInGroup ? 'last-in-group' : '',
   ].filter(Boolean).join(' ');
+
+  // Thumbnail: originals get a photo (or letter fallback), variants get nothing.
+  let thumbCell = '';
+  if (!isVariant) {
+    const initial = (r.title || '·').trim().charAt(0).toUpperCase();
+    thumbCell = r.has_photo
+      ? `<img class="thumb" src="${photoUrlForRecipe(r)}" alt="">`
+      : `<div class="thumb-placeholder">${escapeHtml(initial)}</div>`;
+  }
+
   const subtext = isVariant
     ? (r.variant_label ? `<span class="sub">${escapeHtml(r.variant_label)}</span>` : '')
     : '';
+
   return `
     <tr data-id="${r.id}" class="${classes}">
-      <td>${thumb}</td>
+      <td class="thumb-cell">${thumbCell}</td>
       <td><div class="recipe-title-cell"><strong>${escapeHtml(r.title)}</strong>${subtext}</div></td>
       <td>${isVariant ? '<span class="badge variant">variant</span>' : '<span class="badge">original</span>'}</td>
       <td>${!isVariant && r.variant_count ? r.variant_count : '—'}</td>
@@ -503,16 +510,17 @@ function renderOriginal() {
   applyOriginalToggle();
 }
 
-function renderOriginalFile() {
-  const el = document.getElementById('original-file-view');
+// Shared renderer: paints the original-file viewer into any container.
+function renderOriginalFileInto(containerId, recipe) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
   el.innerHTML = '';
-  const r = state.selectedRecipe;
-  if (!r.has_original) {
+  if (!recipe || !recipe.has_original) {
     el.innerHTML = `<div class="no-original">No original file for this recipe.<br>Uploaded files show here; manually-created recipes don't have one.</div>`;
     return;
   }
-  const url = `/api/recipes/${r.id}/original?t=${new Date(r.updated_at).getTime()}`;
-  const mime = (r.original_mime || '').toLowerCase();
+  const url = `/api/recipes/${recipe.id}/original?t=${new Date(recipe.updated_at).getTime()}`;
+  const mime = (recipe.original_mime || '').toLowerCase();
 
   if (mime.startsWith('image/')) {
     const img = document.createElement('img');
@@ -525,7 +533,6 @@ function renderOriginalFile() {
     iframe.title = 'Original PDF';
     el.appendChild(iframe);
   } else {
-    // DOCX and other types can't render in-browser — offer download instead.
     el.innerHTML = `
       <div class="docx-fallback">
         This file type (<code>${escapeHtml(mime || 'unknown')}</code>) can't be previewed in the browser.
@@ -534,27 +541,36 @@ function renderOriginalFile() {
   }
 }
 
-function applyOriginalToggle() {
-  const toggle = document.getElementById('original-toggle');
-  const hasOriginal = !!state.selectedRecipe?.has_original;
-  toggle.style.visibility = hasOriginal ? '' : 'hidden';
-
-  toggle.querySelectorAll('.toggle-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.mode === state.originalView);
-  });
-  const fileView = document.getElementById('original-file-view');
-  const parsedView = document.getElementById('original-view');
-  if (state.originalView === 'file' && hasOriginal) {
-    fileView.classList.remove('hidden');
-    parsedView.classList.add('hidden');
-  } else {
-    fileView.classList.add('hidden');
-    parsedView.classList.remove('hidden');
-  }
+function renderOriginalFile() {
+  renderOriginalFileInto('original-file-view', state.selectedRecipe);
 }
 
-document.getElementById('original-toggle').addEventListener('click', (e) => {
-  const btn = e.target.closest('.toggle-btn');
+// Drives BOTH toggles (edit view + compare view) from a single state field.
+function applyOriginalToggle() {
+  const hasOriginal = !!state.selectedRecipe?.has_original;
+  const mode = state.originalView === 'file' && hasOriginal ? 'file' : 'parsed';
+
+  // Sync the visual active-state on every toggle button.
+  document.querySelectorAll('.view-toggle .toggle-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === state.originalView);
+  });
+  // Hide the toggle entirely when there's no original to switch to.
+  document.querySelectorAll('.view-toggle').forEach(t => {
+    t.style.visibility = hasOriginal ? '' : 'hidden';
+  });
+
+  // Edit tab
+  document.getElementById('original-file-view')?.classList.toggle('hidden', mode !== 'file');
+  document.getElementById('original-view')?.classList.toggle('hidden', mode !== 'parsed');
+
+  // Compare tab
+  document.getElementById('compare-original-file-view')?.classList.toggle('hidden', mode !== 'file');
+  document.getElementById('compare-left')?.classList.toggle('hidden', mode !== 'parsed');
+}
+
+// Single delegated handler for every `.view-toggle` on the page.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.view-toggle .toggle-btn');
   if (!btn) return;
   state.originalView = btn.dataset.mode;
   applyOriginalToggle();
@@ -584,15 +600,19 @@ function renderCompare() {
         </option>`).join('')
     : `<option value="">(no variants yet)</option>`;
 
+  // Left pane: both views prepared, toggle decides which is visible.
+  renderOriginalFileInto('compare-original-file-view', state.selectedRecipe);
+  renderRecipeCard(left, state.selectedRecipe, { editable: false, recipeId: state.selectedRecipe.id });
+
   const variant = state.variants.find(v => v.id === Number(state.compareVariantId));
   if (!variant) {
     right.innerHTML = '<div class="muted">No variant saved yet — create one in the Edit tab.</div>';
-    renderRecipeCard(left, state.selectedRecipe, { editable: false, recipeId: state.selectedRecipe.id });
-    return;
+  } else {
+    renderRecipeCard(right, variant, { editable: false, recipeId: variant.id });
+    applyDiffHighlights(left, right, state.selectedRecipe, variant);
   }
-  renderRecipeCard(left, state.selectedRecipe, { editable: false, recipeId: state.selectedRecipe.id });
-  renderRecipeCard(right, variant, { editable: false, recipeId: variant.id });
-  applyDiffHighlights(left, right, state.selectedRecipe, variant);
+
+  applyOriginalToggle();
 }
 
 function applyDiffHighlights(leftEl, rightEl, a, b) {

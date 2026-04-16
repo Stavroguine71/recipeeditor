@@ -47,7 +47,7 @@
       <table id="recipe-table">
         <thead>
           <tr>
-            <th style="width: 48px;"></th>
+            <th style="width: 68px;"></th>
             <th>Title</th>
             <th>Type</th>
             <th>Variants</th>
@@ -109,12 +109,19 @@
     <!-- COMPARE VIEW -->
     <div class="panes hidden" data-view="compare">
       <div class="pane">
-        <div class="pane-label">Original</div>
-        <div id="compare-left" class="recipe-card readonly"></div>
+        <div class="pane-label">
+          <span>Original</span>
+          <div class="view-toggle" id="compare-original-toggle">
+            <button class="toggle-btn active" data-mode="file">Upload</button>
+            <button class="toggle-btn" data-mode="parsed">Parsed</button>
+          </div>
+        </div>
+        <div id="compare-original-file-view" class="original-file-view"></div>
+        <div id="compare-left" class="recipe-card readonly hidden"></div>
       </div>
       <div class="pane">
         <div class="pane-label">
-          Variant
+          <span>Variant</span>
           <select id="compare-pick" class="compare-pick"></select>
         </div>
         <div id="compare-right" class="recipe-card readonly"></div>

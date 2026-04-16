@@ -56,6 +56,22 @@ h2 { font-size: 1.2rem; }
     radial-gradient(ellipse at 50% 100%, rgba(109, 126, 95, 0.18) 0%, transparent 60%),
     linear-gradient(180deg, #fbf6ec 0%, #f5ebd9 100%);
 }
+/*
+  Decorative food illustration (semi-transparent).
+  We try images/hero.jpg first — if you drop a .jpg in there it wins.
+  Falls back to the hand-drawn SVG at images/hero.svg.
+*/
+.hero-bg::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: url('/images/hero.jpg'), url('/images/hero.svg');
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, 1200px auto;
+  background-position: center, center;
+  opacity: 0.18;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
 .hero-bg::after {
   content: "";
   position: absolute; inset: 0;
@@ -65,7 +81,7 @@ h2 { font-size: 1.2rem; }
     radial-gradient(rgba(109, 126, 95, 0.04) 1px, transparent 1px);
   background-size: 28px 28px, 40px 40px;
   background-position: 0 0, 14px 14px;
-  opacity: 0.8;
+  opacity: 0.7;
 }
 .hero-inner { max-width: 720px; margin: 0 auto; }
 .hero-eyebrow {
@@ -204,20 +220,37 @@ th {
 tbody tr { cursor: pointer; transition: background 0.12s; }
 tbody tr:hover { background: var(--bg-paper); }
 tbody tr.selected { background: rgba(247, 216, 147, 0.35); }
-tbody tr.variant-row td:nth-child(2) { padding-left: 28px; position: relative; }
+/* Variant rows: smaller, more indented, no thumbnail in first cell */
+tbody tr.variant-row { background: rgba(240, 230, 209, 0.22); }
+tbody tr.variant-row:hover { background: var(--bg-paper); }
+tbody tr.variant-row td { padding-top: 8px; padding-bottom: 8px; }
+tbody tr.variant-row td.thumb-cell { padding: 0; }  /* empty cell = indent */
+tbody tr.variant-row td:nth-child(2) {
+  padding-left: 40px; position: relative;
+}
 tbody tr.variant-row td:nth-child(2)::before {
   content: "↳";
-  position: absolute; left: 10px; color: var(--muted);
-  font-size: 0.95rem;
+  position: absolute; left: 18px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 0.9rem;
 }
-tbody tr.variant-row { background: rgba(240, 230, 209, 0.25); }
-tbody tr.variant-row:hover { background: var(--bg-paper); }
+tbody tr.variant-row .recipe-title-cell strong {
+  font-family: var(--font-body);      /* less weighty than the display serif */
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--ink);
+  opacity: 0.85;
+}
+tbody tr.variant-row .recipe-title-cell .sub { font-size: 0.72rem; }
+tbody tr.variant-row .badge { font-size: 0.62rem; padding: 2px 7px; }
+
 tbody tr.last-in-group td { border-bottom: 2px solid var(--line); }
 
 .recipe-title-cell { display: flex; flex-direction: column; gap: 2px; }
 .recipe-title-cell strong {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1.08rem;
   font-weight: 600;
   color: var(--ink);
 }
@@ -225,18 +258,21 @@ tbody tr.last-in-group td { border-bottom: 2px solid var(--line); }
   font-size: 0.78rem; color: var(--muted); font-style: italic;
 }
 
+/* Originals only — slightly bigger photo / letter tile */
+.thumb-cell { width: 68px; }
 .thumb {
-  width: 44px; height: 44px; border-radius: 8px;
+  width: 60px; height: 60px; border-radius: 10px;
   object-fit: cover; background: var(--bg-paper);
   border: 1px solid var(--line-soft);
+  box-shadow: 0 1px 3px rgba(58, 30, 12, 0.08);
   display: block;
 }
 .thumb-placeholder {
-  width: 44px; height: 44px; border-radius: 8px;
+  width: 60px; height: 60px; border-radius: 10px;
   background: linear-gradient(135deg, var(--bg-paper), #e8dcc0);
   display: flex; align-items: center; justify-content: center;
-  color: var(--brand); opacity: 0.6;
-  font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+  color: var(--brand); opacity: 0.7;
+  font-family: var(--font-display); font-size: 1.4rem; font-weight: 700;
   border: 1px solid var(--line-soft);
 }
 

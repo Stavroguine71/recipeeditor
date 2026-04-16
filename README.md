@@ -58,6 +58,21 @@ The app still runs. AI buttons show a disabled state, OCR falls back to
 `tesseract.js`, and uploaded files are stored with raw text in the notes
 field that you can manually reorganize.
 
+## Customising the landing page image
+
+The hero banner uses a hand-drawn food illustration at
+`public/images/hero.svg`. To use your own picture instead:
+
+1. Drop a JPG or PNG into `public/images/` named exactly **`hero.jpg`**
+   (any size, landscape looks best — ~1600×600 or larger).
+2. Commit and push — Railway auto-redeploys.
+
+That's it. The CSS prefers `hero.jpg` over the SVG, so it'll appear as a
+semi-transparent background behind the title as soon as the file exists.
+
+To adjust how visible the background is, edit `public/styles.css` and
+change `opacity: 0.18` on `.hero-bg::before` (higher = bolder photo).
+
 ## API
 
 | Method | Path                                   | Purpose                                    |
