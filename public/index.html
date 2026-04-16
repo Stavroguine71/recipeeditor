@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recipe Variants</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Recipe Variants</h1>
+    <div class="actions">
+      <label class="btn primary">
+        Upload recipe
+        <input id="upload-input" type="file" accept=".pdf,.docx,image/*" hidden />
+      </label>
+      <button id="new-manual" class="btn">New blank recipe</button>
+      <span id="status" class="status muted"></span>
+    </div>
+  </header>
+
+  <!-- 1. Recipe navigator table -->
+  <section class="nav-section">
+    <div class="nav-header">
+      <h2>All recipes</h2>
+      <input id="search" class="search" type="search" placeholder="Search title..." />
+    </div>
+    <div class="table-wrap">
+      <table id="recipe-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Parent</th>
+            <th>Variants</th>
+            <th>Source</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="recipe-tbody">
+          <tr><td colspan="7" class="muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 2. Workbench: original on the left, variant editor on the right -->
+  <section id="workbench" class="workbench hidden">
+    <div class="workbench-header">
+      <h2 id="workbench-title">Working on: <span id="wb-recipe-title">—</span></h2>
+      <div class="workbench-tabs">
+        <button class="tab active" data-view="edit">Create variant</button>
+        <button class="tab" data-view="compare">Compare side-by-side</button>
+      </div>
+    </div>
+
+    <!-- EDIT VIEW: original | variant editor -->
+    <div class="panes" data-view="edit">
+      <div class="pane">
+        <div class="pane-label">Original</div>
+        <div id="original-view" class="recipe-card readonly"></div>
+      </div>
+      <div class="pane">
+        <div class="pane-label">Variant (editable)</div>
+
+        <div class="variant-toolbar">
+          <input id="variant-label" class="variant-label-input" type="text" placeholder="Variant label (e.g. 'Vegan version')" />
+          <div class="ai-row">
+            <input id="ai-instructions" type="text" placeholder="AI: e.g. 'make it vegan', 'halve quantities', 'use air fryer'" />
+            <button id="ai-generate" class="btn primary">Generate with AI</button>
+          </div>
+        </div>
+
+        <div id="variant-editor" class="recipe-card editable"></div>
+
+        <div class="save-row">
+          <button id="reset-variant" class="btn">Reset to original</button>
+          <button id="save-variant" class="btn primary">Save variant</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPARE VIEW -->
+    <div class="panes hidden" data-view="compare">
+      <div class="pane">
+        <div class="pane-label">Original</div>
+        <div id="compare-left" class="recipe-card readonly"></div>
+      </div>
+      <div class="pane">
+        <div class="pane-label">
+          Variant
+          <select id="compare-pick" class="compare-pick"></select>
+        </div>
+        <div id="compare-right" class="recipe-card readonly"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Upload-parse confirmation modal -->
+  <div id="upload-modal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Parsed recipe</h3>
+      <p class="muted">Review and edit before saving.</p>
+      <div id="upload-editor" class="recipe-card editable"></div>
+      <div class="save-row">
+        <button id="upload-cancel" class="btn">Cancel</button>
+        <button id="upload-save" class="btn primary">Save recipe</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
