@@ -32,6 +32,15 @@ app.use((err, req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[server] listening on :${PORT}`);
+// Railway requires binding to 0.0.0.0 so its proxy can reach the process.
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[server] listening on 0.0.0.0:${PORT}`);
+});
+
+// Surface unhandled crashes in Railway logs instead of silently exiting.
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
 });
