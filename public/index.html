@@ -3,18 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Recipe Variants</title>
+  <title>Recipe Editor — your kitchen notebook</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>Recipe Variants</h1>
-    <div class="actions">
-      <label class="btn primary">
-        Upload recipe
-        <input id="upload-input" type="file" accept=".pdf,.docx,image/*" hidden />
-      </label>
-      <button id="new-manual" class="btn">New blank recipe</button>
+  <header class="hero">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <div class="hero-eyebrow">
+        <span class="hero-dot"></span>
+        Kitchen notebook
+      </div>
+      <h1 class="hero-title">Recipe Editor</h1>
+      <p class="hero-sub">Upload the recipes you love. Riff on them. Keep every version.</p>
+      <div class="hero-actions">
+        <label class="btn primary btn-lg">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19h14v2H5v-2z"/></svg>
+          Upload recipe
+          <input id="upload-input" type="file" accept=".pdf,.docx,image/*" hidden />
+        </label>
+        <button id="new-manual" class="btn ghost btn-lg">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M11 11V5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+          New blank recipe
+        </button>
+      </div>
       <span id="status" class="status muted"></span>
     </div>
   </header>
@@ -22,16 +37,19 @@
   <!-- 1. Recipe navigator table -->
   <section class="nav-section">
     <div class="nav-header">
-      <h2>All recipes</h2>
-      <input id="search" class="search" type="search" placeholder="Search title..." />
+      <div>
+        <h2 class="section-title">Your recipes</h2>
+        <p class="section-sub muted" id="recipe-count">—</p>
+      </div>
+      <input id="search" class="search" type="search" placeholder="Search your collection..." />
     </div>
     <div class="table-wrap">
       <table id="recipe-table">
         <thead>
           <tr>
+            <th style="width: 48px;"></th>
             <th>Title</th>
             <th>Type</th>
-            <th>Parent</th>
             <th>Variants</th>
             <th>Source</th>
             <th>Created</th>
@@ -58,8 +76,15 @@
     <!-- EDIT VIEW: original | variant editor -->
     <div class="panes" data-view="edit">
       <div class="pane">
-        <div class="pane-label">Original</div>
-        <div id="original-view" class="recipe-card readonly"></div>
+        <div class="pane-label">
+          <span>Original</span>
+          <div class="view-toggle" id="original-toggle">
+            <button class="toggle-btn active" data-mode="file">Upload</button>
+            <button class="toggle-btn" data-mode="parsed">Parsed</button>
+          </div>
+        </div>
+        <div id="original-file-view" class="original-file-view"></div>
+        <div id="original-view" class="recipe-card readonly hidden"></div>
       </div>
       <div class="pane">
         <div class="pane-label">Variant (editable)</div>

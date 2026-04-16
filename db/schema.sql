@@ -18,3 +18,10 @@ CREATE TABLE IF NOT EXISTS recipes (
 
 CREATE INDEX IF NOT EXISTS recipes_parent_idx ON recipes(parent_id);
 CREATE INDEX IF NOT EXISTS recipes_created_idx ON recipes(created_at DESC);
+
+-- Migrations (idempotent) — columns added after the initial launch.
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS original_file BYTEA;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS original_mime TEXT;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS photo_file    BYTEA;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS photo_mime    TEXT;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS photo_url     TEXT;

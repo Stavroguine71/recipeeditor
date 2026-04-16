@@ -5,10 +5,12 @@ const state = {
   recipes: [],
   selectedId: null,
   selectedRecipe: null,
-  variants: [],           // variants of the selected recipe
-  compareVariantId: null, // which variant is shown in compare view
-  workingDraft: null,     // the variant currently being edited
+  variants: [],
+  compareVariantId: null,
+  workingDraft: null,
   aiEnabled: false,
+  originalView: 'file',   // 'file' | 'parsed'
+  uploadFile: null,       // File obj pending save in the upload modal
 };
 
 // ---------- API ----------
@@ -35,6 +37,21 @@ const api = {
     fd.append('file', file);
     return fetch('/api/upload', { method: 'POST', body: fd }).then(handle);
   },
+  uploadSave: (file, recipe) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('recipe', JSON.stringify(recipe));
+    return fetch('/api/upload/save', { method: 'POST', body: fd }).then(handle);
+  },
+  uploadPhoto: (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return fetch(`/api/recipes/${id}/photo`, { method: 'POST', body: fd }).then(handle);
+  },
+  setPhotoUrl: (id, url) => fetch(`/api/recipes/${id}/photo-url`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }),
+  }).then(handle),
+  deletePhoto: (id) => fetch(`/api/recipes/${id}/photo`, { method: 'DELETE' }).then(handle),
 };
 
 async function handle(res) {
@@ -70,6 +87,10 @@ function clone(x) { return JSON.parse(JSON.stringify(x)); }
 function emptyRecipe() {
   return { title: '', description: '', servings: '', ingredients: [], steps: [], notes: '' };
 }
+function photoUrlForRecipe(r) {
+  // Cache-bust so updated photos show immediately.
+  return `/api/recipes/${r.id}/photo?t=${r.updated_at ? new Date(r.updated_at).getTime() : Date.now()}`;
+}
 
 // ---------- Table ----------
 async function loadRecipes() {
@@ -84,32 +105,86 @@ async function loadRecipes() {
 
 function renderTable() {
   const tbody = document.getElementById('recipe-tbody');
+  const countEl = document.getElementById('recipe-count');
   const q = (document.getElementById('search').value || '').toLowerCase();
-  const rows = state.recipes.filter(r => !q || r.title.toLowerCase().includes(q));
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="muted">No recipes yet. Upload one or start a blank recipe.</td></tr>`;
+
+  // Group by parent: each "original" (no parent_id) gets its variants nested
+  // directly below it, sorted variant-asc (oldest first) under the parent.
+  const all = state.recipes;
+  const originals = all
+    .filter(r => !r.parent_id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const grouped = [];
+  for (const parent of originals) {
+    const variants = all
+      .filter(r => r.parent_id === parent.id)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    grouped.push({ parent, variants });
+  }
+
+  // Apply search: keep a group if the parent or any variant matches.
+  const matches = (r) => !q || (r.title || '').toLowerCase().includes(q)
+                       || (r.variant_label || '').toLowerCase().includes(q);
+  const visible = q
+    ? grouped.filter(g => matches(g.parent) || g.variants.some(matches))
+    : grouped;
+
+  if (countEl) {
+    const total = all.length;
+    const origCount = originals.length;
+    const varCount = total - origCount;
+    countEl.textContent = total
+      ? `${origCount} ${origCount === 1 ? 'recipe' : 'recipes'}, ${varCount} ${varCount === 1 ? 'variant' : 'variants'}`
+      : 'Nothing here yet.';
+  }
+
+  if (!visible.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="muted" style="padding:40px;text-align:center;">
+      ${q ? 'No matches. Try another search.' : 'Nothing here yet. Upload a recipe or start a blank one.'}
+    </td></tr>`;
     return;
   }
-  tbody.innerHTML = rows.map(r => {
-    const isVariant = !!r.parent_id;
-    const srcBadge = r.source_type
-      ? `<span class="badge ${escapeHtml(r.source_type)}">${escapeHtml(r.source_type)}</span>`
-      : '';
-    return `
-      <tr data-id="${r.id}" class="${state.selectedId === r.id ? 'selected' : ''}">
-        <td><strong>${escapeHtml(r.title)}</strong>${r.variant_label ? `<div class="muted" style="font-size:0.8rem;">${escapeHtml(r.variant_label)}</div>` : ''}</td>
-        <td>${isVariant ? '<span class="badge variant">variant</span>' : '<span class="badge">original</span>'}</td>
-        <td>${isVariant ? escapeHtml(r.parent_title || '') : ''}</td>
-        <td>${r.variant_count || 0}</td>
-        <td>${srcBadge}</td>
-        <td>${fmtDate(r.created_at)}</td>
-        <td class="row-actions">
-          <button class="btn open-btn">Open</button>
-          <button class="btn del-btn">Delete</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
+
+  const rowsHtml = [];
+  for (const { parent, variants } of visible) {
+    rowsHtml.push(renderRow(parent, false, variants.length === 0));
+    variants.forEach((v, i) => {
+      rowsHtml.push(renderRow(v, true, i === variants.length - 1));
+    });
+  }
+  tbody.innerHTML = rowsHtml.join('');
+}
+
+function renderRow(r, isVariant, lastInGroup) {
+  const srcBadge = r.source_type
+    ? `<span class="badge ${escapeHtml(r.source_type)}">${escapeHtml(r.source_type)}</span>`
+    : '';
+  const initial = (r.title || '·').trim().charAt(0).toUpperCase();
+  const thumb = r.has_photo
+    ? `<img class="thumb" src="${photoUrlForRecipe(r)}" alt="">`
+    : `<div class="thumb-placeholder">${escapeHtml(initial)}</div>`;
+  const classes = [
+    state.selectedId === r.id ? 'selected' : '',
+    isVariant ? 'variant-row' : '',
+    lastInGroup ? 'last-in-group' : '',
+  ].filter(Boolean).join(' ');
+  const subtext = isVariant
+    ? (r.variant_label ? `<span class="sub">${escapeHtml(r.variant_label)}</span>` : '')
+    : '';
+  return `
+    <tr data-id="${r.id}" class="${classes}">
+      <td>${thumb}</td>
+      <td><div class="recipe-title-cell"><strong>${escapeHtml(r.title)}</strong>${subtext}</div></td>
+      <td>${isVariant ? '<span class="badge variant">variant</span>' : '<span class="badge">original</span>'}</td>
+      <td>${!isVariant && r.variant_count ? r.variant_count : '—'}</td>
+      <td>${srcBadge}</td>
+      <td class="muted">${fmtDate(r.created_at)}</td>
+      <td class="row-actions">
+        <button class="btn open-btn">Open</button>
+        <button class="btn del-btn">Delete</button>
+      </td>
+    </tr>`;
 }
 
 document.getElementById('recipe-tbody').addEventListener('click', async (e) => {
@@ -134,17 +209,17 @@ document.getElementById('search').addEventListener('input', renderTable);
 // ---------- Selection ----------
 async function selectRecipe(id) {
   try {
-    const [recipe, variants] = await Promise.all([api.get(id), api.family(id)]);
-    // If the clicked row is a variant, treat its PARENT as the "original" for workbench.
+    const [recipe] = await Promise.all([api.get(id)]);
     const parent = recipe.parent_id ? await api.get(recipe.parent_id) : recipe;
-    const parentVariants = recipe.parent_id ? await api.family(recipe.parent_id) : variants;
+    const parentVariants = await api.family(parent.id);
 
     state.selectedId = parent.id;
     state.selectedRecipe = parent;
     state.variants = parentVariants;
     state.compareVariantId = recipe.parent_id ? recipe.id : (parentVariants[0]?.id || null);
-    state.workingDraft = clone(parent); // start editor with a copy of original
+    state.workingDraft = clone(parent);
     state.workingDraft.variant_label = '';
+    state.originalView = parent.has_original ? 'file' : 'parsed';
   } catch (e) {
     toast(e.message, { error: true });
     return;
@@ -159,13 +234,13 @@ async function selectRecipe(id) {
 }
 
 // ---------- Recipe card rendering ----------
-/**
- * Render a recipe into a container. If editable, inputs are live-bound to `obj`.
- * `obj` is mutated directly — caller holds the reference.
- */
-function renderRecipeCard(container, obj, { editable }) {
+function renderRecipeCard(container, obj, { editable, recipeId = null }) {
   container.innerHTML = '';
   const root = document.createElement('div');
+
+  // Food photo slot (if any, or empty slot when editable)
+  const photoSlot = buildPhotoSlot(obj, recipeId, editable);
+  if (photoSlot) root.appendChild(photoSlot);
 
   // Title
   const title = document.createElement(editable ? 'input' : 'h3');
@@ -236,7 +311,6 @@ function renderRecipeCard(container, obj, { editable }) {
       const del = document.createElement('button');
       del.className = 'del';
       del.textContent = '×';
-      del.title = 'Remove';
       del.addEventListener('click', () => {
         obj.ingredients.splice(idx, 1);
         refreshIngs();
@@ -324,24 +398,180 @@ function renderRecipeCard(container, obj, { editable }) {
   container.appendChild(root);
 }
 
+// Build the photo slot for a recipe card. `recipeId` lets the slot fetch/mutate
+// the photo server-side; pass null for the upload-modal draft (no ID yet).
+function buildPhotoSlot(obj, recipeId, editable) {
+  const slot = document.createElement('div');
+  slot.className = 'photo-slot';
+
+  const hasPhoto = !!recipeId && !!obj.has_photo;
+  if (hasPhoto) {
+    slot.classList.add('has-photo');
+    const img = document.createElement('img');
+    img.alt = obj.title || 'Food photo';
+    img.src = photoUrlForRecipe(obj);
+    slot.appendChild(img);
+  }
+
+  if (!editable) return hasPhoto ? slot : null;
+
+  // Editable: show actions
+  const actions = document.createElement('div');
+  actions.className = hasPhoto ? 'photo-actions' : 'photo-empty';
+
+  if (!hasPhoto) {
+    const label = document.createElement('span');
+    label.textContent = 'Add a food photo:';
+    actions.appendChild(label);
+  }
+
+  const uploadLabel = document.createElement('label');
+  uploadLabel.className = 'btn';
+  uploadLabel.textContent = hasPhoto ? 'Replace' : 'Upload';
+  const fileIn = document.createElement('input');
+  fileIn.type = 'file';
+  fileIn.accept = 'image/*';
+  fileIn.hidden = true;
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files?.[0];
+    if (!f || !recipeId) return;
+    try {
+      await api.uploadPhoto(recipeId, f);
+      toast('Photo uploaded.');
+      await refreshSelected();
+    } catch (e) { toast(e.message, { error: true }); }
+  });
+  uploadLabel.appendChild(fileIn);
+  actions.appendChild(uploadLabel);
+
+  if (!hasPhoto) {
+    const urlIn = document.createElement('input');
+    urlIn.type = 'url';
+    urlIn.placeholder = 'Paste image URL (https://…)';
+    actions.appendChild(urlIn);
+    const urlBtn = document.createElement('button');
+    urlBtn.className = 'btn';
+    urlBtn.textContent = 'Fetch';
+    urlBtn.addEventListener('click', async () => {
+      if (!recipeId) return toast('Save the recipe first, then add a photo.', { error: true });
+      const url = urlIn.value.trim();
+      if (!url) return;
+      urlBtn.disabled = true; urlBtn.textContent = 'Fetching…';
+      try {
+        await api.setPhotoUrl(recipeId, url);
+        toast('Photo attached.');
+        await refreshSelected();
+      } catch (e) { toast(e.message, { error: true }); }
+      finally { urlBtn.disabled = false; urlBtn.textContent = 'Fetch'; }
+    });
+    actions.appendChild(urlBtn);
+  } else {
+    const del = document.createElement('button');
+    del.className = 'btn';
+    del.textContent = 'Remove';
+    del.addEventListener('click', async () => {
+      if (!recipeId) return;
+      if (!confirm('Remove this photo?')) return;
+      try {
+        await api.deletePhoto(recipeId);
+        toast('Photo removed.');
+        await refreshSelected();
+      } catch (e) { toast(e.message, { error: true }); }
+    });
+    actions.appendChild(del);
+  }
+
+  slot.appendChild(actions);
+  return slot;
+}
+
+async function refreshSelected() {
+  if (!state.selectedId) return;
+  // Reload list and re-open the currently selected recipe to refresh photo state.
+  await loadRecipes();
+  await selectRecipe(state.selectedId);
+}
+
+// ---------- Original pane (file viewer + parsed toggle) ----------
 function renderOriginal() {
   renderRecipeCard(
     document.getElementById('original-view'),
     state.selectedRecipe,
-    { editable: false }
+    { editable: false, recipeId: state.selectedRecipe.id }
   );
+  renderOriginalFile();
+  applyOriginalToggle();
 }
+
+function renderOriginalFile() {
+  const el = document.getElementById('original-file-view');
+  el.innerHTML = '';
+  const r = state.selectedRecipe;
+  if (!r.has_original) {
+    el.innerHTML = `<div class="no-original">No original file for this recipe.<br>Uploaded files show here; manually-created recipes don't have one.</div>`;
+    return;
+  }
+  const url = `/api/recipes/${r.id}/original?t=${new Date(r.updated_at).getTime()}`;
+  const mime = (r.original_mime || '').toLowerCase();
+
+  if (mime.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = 'Original upload';
+    el.appendChild(img);
+  } else if (mime === 'application/pdf') {
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.title = 'Original PDF';
+    el.appendChild(iframe);
+  } else {
+    // DOCX and other types can't render in-browser — offer download instead.
+    el.innerHTML = `
+      <div class="docx-fallback">
+        This file type (<code>${escapeHtml(mime || 'unknown')}</code>) can't be previewed in the browser.
+        <br><a href="${url}" target="_blank" rel="noopener">Download the original</a> to view it.
+      </div>`;
+  }
+}
+
+function applyOriginalToggle() {
+  const toggle = document.getElementById('original-toggle');
+  const hasOriginal = !!state.selectedRecipe?.has_original;
+  toggle.style.visibility = hasOriginal ? '' : 'hidden';
+
+  toggle.querySelectorAll('.toggle-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === state.originalView);
+  });
+  const fileView = document.getElementById('original-file-view');
+  const parsedView = document.getElementById('original-view');
+  if (state.originalView === 'file' && hasOriginal) {
+    fileView.classList.remove('hidden');
+    parsedView.classList.add('hidden');
+  } else {
+    fileView.classList.add('hidden');
+    parsedView.classList.remove('hidden');
+  }
+}
+
+document.getElementById('original-toggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('.toggle-btn');
+  if (!btn) return;
+  state.originalView = btn.dataset.mode;
+  applyOriginalToggle();
+});
 
 function renderVariantEditor() {
   document.getElementById('variant-label').value = state.workingDraft.variant_label || '';
+  // Variant editor doesn't have a server-side ID yet, so it can't manage photos.
+  // (Photos live on the saved recipe and can be added after saving.)
   renderRecipeCard(
     document.getElementById('variant-editor'),
     state.workingDraft,
-    { editable: true }
+    { editable: true, recipeId: null }
   );
 }
 
-// ---------- Compare view (with diff highlighting) ----------
+// ---------- Compare view ----------
 function renderCompare() {
   const left = document.getElementById('compare-left');
   const right = document.getElementById('compare-right');
@@ -357,19 +587,15 @@ function renderCompare() {
   const variant = state.variants.find(v => v.id === Number(state.compareVariantId));
   if (!variant) {
     right.innerHTML = '<div class="muted">No variant saved yet — create one in the Edit tab.</div>';
-    renderRecipeCard(left, state.selectedRecipe, { editable: false });
+    renderRecipeCard(left, state.selectedRecipe, { editable: false, recipeId: state.selectedRecipe.id });
     return;
   }
-
-  // Render both, then overlay diff highlighting.
-  renderRecipeCard(left, state.selectedRecipe, { editable: false });
-  renderRecipeCard(right, variant, { editable: false });
+  renderRecipeCard(left, state.selectedRecipe, { editable: false, recipeId: state.selectedRecipe.id });
+  renderRecipeCard(right, variant, { editable: false, recipeId: variant.id });
   applyDiffHighlights(left, right, state.selectedRecipe, variant);
 }
 
 function applyDiffHighlights(leftEl, rightEl, a, b) {
-  // Simple field-level highlighting by marking changed items.
-  // Title & description
   const leftTitle = leftEl.querySelector('.title, .title-input');
   const rightTitle = rightEl.querySelector('.title, .title-input');
   if (a.title !== b.title) {
@@ -377,7 +603,6 @@ function applyDiffHighlights(leftEl, rightEl, a, b) {
     if (rightTitle) rightTitle.classList.add('diff-changed');
   }
 
-  // Ingredients: highlight rows that differ by item name.
   const leftIngs = [...leftEl.querySelectorAll('.ing-row')];
   const rightIngs = [...rightEl.querySelectorAll('.ing-row')];
   const aItems = (a.ingredients || []).map(i => (i.item || '').toLowerCase());
@@ -395,7 +620,6 @@ function applyDiffHighlights(leftEl, rightEl, a, b) {
       row.classList.add('diff-changed');
   });
 
-  // Steps: by index.
   const leftSteps = [...leftEl.querySelectorAll('.step-row')];
   const rightSteps = [...rightEl.querySelectorAll('.step-row')];
   const maxS = Math.max(a.steps.length, b.steps.length);
@@ -459,9 +683,7 @@ document.getElementById('save-variant').addEventListener('click', async () => {
     toast('Variant saved.');
     await loadRecipes();
     await selectRecipe(state.selectedId);
-  } catch (e) {
-    toast(e.message, { error: true });
-  }
+  } catch (e) { toast(e.message, { error: true }); }
 });
 
 document.getElementById('ai-generate').addEventListener('click', async () => {
@@ -469,23 +691,15 @@ document.getElementById('ai-generate').addEventListener('click', async () => {
   const instructions = document.getElementById('ai-instructions').value.trim();
   if (!instructions) return toast('Enter AI instructions first.', { error: true });
   const btn = document.getElementById('ai-generate');
-  btn.disabled = true;
-  btn.textContent = 'Generating…';
+  btn.disabled = true; btn.textContent = 'Generating…';
   try {
     const variant = await api.aiVariant(state.selectedId, { instructions });
-    state.workingDraft = {
-      ...variant,
-      variant_label: instructions.slice(0, 80),
-    };
+    state.workingDraft = { ...variant, variant_label: instructions.slice(0, 80) };
     renderVariantEditor();
     document.getElementById('variant-label').value = state.workingDraft.variant_label;
     toast('Variant generated — review and save.');
-  } catch (e) {
-    toast(e.message, { error: true });
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Generate with AI';
-  }
+  } catch (e) { toast(e.message, { error: true }); }
+  finally { btn.disabled = false; btn.textContent = 'Generate with AI'; }
 });
 
 // ---------- New blank recipe ----------
@@ -507,6 +721,7 @@ let uploadDraft = null;
 uploadInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  state.uploadFile = file;
   document.getElementById('status').textContent = 'Parsing upload…';
   try {
     const parsed = await api.upload(file);
@@ -520,33 +735,37 @@ uploadInput.addEventListener('change', async (e) => {
       source_file: parsed.source_file || file.name,
       source_type: 'upload',
     };
-    renderRecipeCard(uploadEditor, uploadDraft, { editable: true });
+    renderRecipeCard(uploadEditor, uploadDraft, { editable: true, recipeId: null });
     uploadModal.classList.remove('hidden');
   } catch (err) {
     toast(err.message, { error: true });
+    state.uploadFile = null;
   } finally {
     document.getElementById('status').textContent = '';
-    uploadInput.value = ''; // reset so same file can be reselected
+    uploadInput.value = '';
   }
 });
 
 document.getElementById('upload-cancel').addEventListener('click', () => {
   uploadModal.classList.add('hidden');
   uploadDraft = null;
+  state.uploadFile = null;
 });
 
 document.getElementById('upload-save').addEventListener('click', async () => {
   if (!uploadDraft) return;
   try {
-    const saved = await api.create(uploadDraft);
+    // Re-send the file so we can store the original bytes alongside the recipe.
+    const saved = state.uploadFile
+      ? await api.uploadSave(state.uploadFile, uploadDraft)
+      : await api.create(uploadDraft);
     uploadModal.classList.add('hidden');
     uploadDraft = null;
+    state.uploadFile = null;
     toast('Recipe saved.');
     await loadRecipes();
     await selectRecipe(saved.id);
-  } catch (e) {
-    toast(e.message, { error: true });
-  }
+  } catch (e) { toast(e.message, { error: true }); }
 });
 
 // ---------- Boot ----------
